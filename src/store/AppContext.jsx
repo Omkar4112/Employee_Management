@@ -2,7 +2,12 @@ import React, { createContext, useReducer, useEffect, useContext, useCallback } 
 
 // ─── Seed Data ────────────────────────────────────────────────────────────────
 const SEED = {
+  auth: {
+    user: null,
+    isAuthenticated: false
+  },
   employees: [
+// ... existing employee data ...
     { id: 'e1', name: 'Sarah Connor', role: 'CTO', department: 'Executive', salary: 200000, performance: 9.5, managerId: null, joinDate: '2020-01-10', avatar: 'SC' },
     { id: 'e2', name: 'John Reese', role: 'Engineering Manager', department: 'Engineering', salary: 150000, performance: 8.8, managerId: 'e1', joinDate: '2020-03-15', avatar: 'JR' },
     { id: 'e3', name: 'Root Shaw', role: 'Design Manager', department: 'Design', salary: 140000, performance: 9.1, managerId: 'e1', joinDate: '2020-04-01', avatar: 'RS' },
@@ -52,7 +57,8 @@ const SEED = {
 
 // ─── Reducer ──────────────────────────────────────────────────────────────────
 function log(state, action, details) {
-  const entry = { id: `log_${Date.now()}_${Math.random()}`, action, timestamp: new Date().toISOString(), actor: 'Admin', details };
+  const actor = state.auth?.user?.name || 'System';
+  const entry = { id: `log_${Date.now()}_${Math.random()}`, action, timestamp: new Date().toISOString(), actor, details };
   return [entry, ...state.activityLogs];
 }
 
@@ -60,6 +66,30 @@ function reducer(state, action) {
   switch (action.type) {
     case 'RESET_TO_SEED':
       return { ...SEED, activityLogs: SEED.activityLogs };
+
+    case 'LOGIN': {
+      const { role, email } = action.payload;
+      const user = { 
+        ADMIN: { id: 'admin', name: 'Admin User', role: 'ADMIN', email },
+        HR: { id: 'hr', name: 'HR Manager', role: 'HR', email },
+        EMPLOYEE: { id: 'e6', name: 'Omkar Patil', role: 'EMPLOYEE', email }
+      }[role] || state.auth.user;
+      return { ...state, auth: { isAuthenticated: true, user }, activityLogs: log(state, 'User Login', `${user.name} logged in as ${user.role}.`) };
+    }
+
+    case 'LOGOUT': {
+      return { ...state, auth: { isAuthenticated: false, user: null }, activityLogs: log(state, 'User Logout', 'User signed out.') };
+    }
+
+    case 'SET_ROLE': {
+      const role = action.payload;
+      const user = { 
+        ADMIN: { id: 'admin', name: 'Admin User', role: 'ADMIN', email: state.auth.user.email },
+        HR: { id: 'hr', name: 'HR Manager', role: 'HR', email: state.auth.user.email },
+        EMPLOYEE: { id: 'e6', name: 'Omkar Patil', role: 'EMPLOYEE', email: state.auth.user.email }
+      }[role] || state.auth.user;
+      return { ...state, auth: { ...state.auth, user } };
+    }
 
     // ── Employees ──────────────────────────────────
     case 'ADD_EMPLOYEE': {
@@ -149,7 +179,7 @@ export const AppContext = createContext(null);
 
 function loadState() {
   try {
-    const raw = localStorage.getItem('wfm_state_v2');
+    const raw = localStorage.getItem('wfm_state_v3');
     if (raw) return JSON.parse(raw);
   } catch { /* ignore */ }
   return SEED;
@@ -159,7 +189,7 @@ export function AppProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, undefined, loadState);
 
   useEffect(() => {
-    try { localStorage.setItem('wfm_state_v2', JSON.stringify(state)); } catch { /* ignore */ }
+    try { localStorage.setItem('wfm_state_v3', JSON.stringify(state)); } catch { /* ignore */ }
   }, [state]);
 
   return <AppContext.Provider value={{ state, dispatch }}>{children}</AppContext.Provider>;

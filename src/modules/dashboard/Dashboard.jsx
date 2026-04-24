@@ -3,66 +3,71 @@ import { useApp } from '../../store/AppContext';
 import { generateInsights } from '../../engines/InsightsEngine';
 import { calcUtilization, utilizationStatus, calcTeamUtilizationDistribution } from '../../engines/ResourceEngine';
 import { calcAttendancePct } from '../../engines/AttendanceEngine';
+import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement } from 'chart.js';
+import { Doughnut, Bar } from 'react-chartjs-2';
 
-// Mini SVG Donut Chart
+ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement);
+
+// Chart.js Donut Chart
 function DonutChart({ data }) {
-  const total = Object.values(data).reduce((a, b) => a + b, 0) || 1;
-  const segments = [
-    { label: 'Optimal', value: data.Optimal, color: '#10b981' },
-    { label: 'Overloaded', value: data.Overloaded, color: '#ef4444' },
-    { label: 'Underutilized', value: data.Underutilized, color: '#f59e0b' },
-  ];
-  const r = 52, cx = 60, cy = 60, stroke = 16;
-  const circ = 2 * Math.PI * r;
-  let offset = 0;
+  const chartData = {
+    labels: ['Optimal', 'Overloaded', 'Underutilized'],
+    datasets: [
+      {
+        data: [data.Optimal || 0, data.Overloaded || 0, data.Underutilized || 0],
+        backgroundColor: ['#10b981', '#ef4444', '#f59e0b'],
+        borderWidth: 0,
+        hoverOffset: 4
+      },
+    ],
+  };
+
+  const options = {
+    cutout: '75%',
+    plugins: {
+      legend: { position: 'right', labels: { color: '#94a3b8', font: { family: 'Inter', size: 11 } } },
+      tooltip: { backgroundColor: '#1c2540', titleFont: { family: 'Outfit' }, bodyFont: { family: 'Inter' } }
+    }
+  };
 
   return (
-    <div className="donut-container">
-      <svg width="120" height="120" viewBox="0 0 120 120">
-        <circle cx={cx} cy={cy} r={r} fill="none" stroke="#1c2540" strokeWidth={stroke} />
-        {segments.map((seg) => {
-          const pct = seg.value / total;
-          const dash = pct * circ;
-          const el = (
-            <circle key={seg.label} cx={cx} cy={cy} r={r} fill="none" stroke={seg.color}
-              strokeWidth={stroke} strokeDasharray={`${dash} ${circ - dash}`}
-              strokeDashoffset={-offset} strokeLinecap="round"
-              style={{ transform: 'rotate(-90deg)', transformOrigin: '60px 60px', transition: 'stroke-dasharray 0.5s ease' }}
-            />
-          );
-          offset += dash;
-          return el;
-        })}
-        <text x="60" y="57" textAnchor="middle" fill="#f1f5f9" fontSize="16" fontWeight="800" fontFamily="Outfit">{total}</text>
-        <text x="60" y="72" textAnchor="middle" fill="#94a3b8" fontSize="9" fontFamily="Inter">Staff</text>
-      </svg>
-      <div className="donut-legend">
-        {segments.map(s => (
-          <div key={s.label} className="donut-legend-item">
-            <span className="donut-dot" style={{ background: s.color }} />
-            <span className="text-muted text-xs">{s.label}</span>
-            <span className="fw-6 text-xs">{s.value}</span>
-          </div>
-        ))}
-      </div>
+    <div style={{ height: '140px', display: 'flex', justifyContent: 'center' }}>
+      <Doughnut data={chartData} options={options} />
     </div>
   );
 }
 
-// Horizontal bar chart
+// Chart.js Bar Chart
 function BarChart({ items, color }) {
-  const max = Math.max(...items.map(i => i.value), 1);
+  const chartData = {
+    labels: items.map(i => i.label),
+    datasets: [
+      {
+        label: 'Count',
+        data: items.map(i => i.value),
+        backgroundColor: color || '#6366f1',
+        borderRadius: 4,
+      },
+    ],
+  };
+
+  const options = {
+    indexAxis: 'y',
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: { backgroundColor: '#1c2540' }
+    },
+    scales: {
+      x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } },
+      y: { grid: { display: false }, ticks: { color: '#94a3b8', font: { family: 'Inter', size: 11 } } }
+    }
+  };
+
   return (
-    <div className="bar-chart">
-      {items.map(item => (
-        <div key={item.label} className="bar-row">
-          <span className="bar-label">{item.label}</span>
-          <div className="progress-bar">
-            <div className="progress-fill" style={{ width: `${(item.value / max) * 100}%`, background: color || 'var(--primary)' }} />
-          </div>
-          <span className="bar-value">{item.value}{item.unit || ''}</span>
-        </div>
-      ))}
+    <div style={{ height: '180px' }}>
+      <Bar data={chartData} options={options} />
     </div>
   );
 }

@@ -22,7 +22,7 @@ function avatarColor(name = '') {
 
 function EmployeeModal({ employee, onClose, employees }) {
   const { state, dispatch } = useApp();
-  const [form, setForm] = useState(employee || { id: `e${Date.now()}`, name: '', role: '', department: 'Engineering', salary: '', performance: '', managerId: '', joinDate: new Date().toISOString().slice(0,10), avatar: '' });
+  const [form, setForm] = useState(employee || { id: `e${Date.now()}`, name: '', role: '', department: 'Engineering', status: 'Active', salary: '', performance: '', managerId: '', joinDate: new Date().toISOString().slice(0,10), avatar: '' });
   const isEdit = !!employee;
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
 
@@ -54,6 +54,12 @@ function EmployeeModal({ employee, onClose, employees }) {
               <label className="form-label">Department *</label>
               <select required className="form-control" value={form.department} onChange={set('department')}>
                 {DEPTS.map(d => <option key={d}>{d}</option>)}
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Status *</label>
+              <select required className="form-control" value={form.status || 'Active'} onChange={set('status')}>
+                {['Active', 'Inactive'].map(s => <option key={s}>{s}</option>)}
               </select>
             </div>
             <div className="form-group">
@@ -108,6 +114,7 @@ function EmployeeDetailPanel({ emp, onClose }) {
           <div className="text-muted text-sm">{emp.role}</div>
           <div style={{ marginTop: '0.5rem' }}>
             <span className={`badge badge-${emp.department === 'Engineering' ? 'primary' : emp.department === 'Design' ? 'info' : 'neutral'}`}>{emp.department}</span>
+            <span className={`badge ${emp.status === 'Inactive' ? 'badge-danger' : 'badge-success'}`} style={{ marginLeft: '0.5rem' }}>{emp.status || 'Active'}</span>
             {onLeave && <span className="badge badge-warning" style={{ marginLeft: '0.5rem' }}>On Leave</span>}
           </div>
         </div>
@@ -115,7 +122,7 @@ function EmployeeDetailPanel({ emp, onClose }) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
         {[
           { label: 'Performance', value: `${emp.performance}/10`, color: emp.performance >= 9 ? 'var(--success)' : emp.performance >= 7 ? 'var(--warning)' : 'var(--danger)' },
-          { label: 'Salary', value: `$${Number(emp.salary).toLocaleString()}` },
+          ...(canSeeSalary ? [{ label: 'Salary', value: `$${Number(emp.salary).toLocaleString()}` }] : []),
           { label: 'Join Date', value: new Date(emp.joinDate).toLocaleDateString() },
         ].map(r => (
           <div key={r.label} className="flex-between">
@@ -165,14 +172,24 @@ export default function EmployeeList() {
   const [filters, setFilters] = useState([]);
   const [filterForm, setFilterForm] = useState({ field: 'department', op: '=', value: '' });
   const [sort, setSort] = useState({ key: 'name', dir: 1 });
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 8;
+
+  const userRole = state.auth.user.role;
+  const canManage = userRole === 'ADMIN' || userRole === 'HR';
+  const canSeeSalary = userRole === 'ADMIN' || userRole === 'HR';
 
   const addFilter = () => {
     if (!filterForm.value.trim()) return;
     setFilters(f => [...f, { ...filterForm, id: Date.now() }]);
     setFilterForm(f => ({ ...f, value: '' }));
+    setCurrentPage(1);
   };
 
-  const removeFilter = id => setFilters(f => f.filter(x => x.id !== id));
+  const removeFilter = id => {
+    setFilters(f => f.filter(x => x.id !== id));
+    setCurrentPage(1);
+  };
 
   const displayed = useMemo(() => {
     let list = applyFilters(state.employees, filters, state);
@@ -203,7 +220,7 @@ export default function EmployeeList() {
           <h1>Employee Directory</h1>
           <p>{state.employees.length} employees · filter, sort, and manage workforce data.</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setModal('add')}>+ Hire Employee</button>
+        {canManage && <button className="btn btn-primary" onClick={() => setModal('add')}>+ Hire Employee</button>}
       </div>
 
       {/* Filter Bar */}
@@ -254,24 +271,24 @@ export default function EmployeeList() {
                 <th><button className="btn btn-ghost btn-sm" style={{ padding: 0, fontWeight: 600, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-2)' }} onClick={() => toggleSort('utilization')}>Utilization{sortIcon('utilization')}</button></th>
                 <th><button className="btn btn-ghost btn-sm" style={{ padding: 0, fontWeight: 600, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-2)' }} onClick={() => toggleSort('attendance')}>Attendance{sortIcon('attendance')}</button></th>
                 <th><button className="btn btn-ghost btn-sm" style={{ padding: 0, fontWeight: 600, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-2)' }} onClick={() => toggleSort('performance')}>Performance{sortIcon('performance')}</button></th>
-                <th>Actions</th>
+                {canManage && <th>Actions</th>}
               </tr>
             </thead>
             <tbody>
               {displayed.length === 0 ? (
                 <tr><td colSpan={6}><div className="table-empty">No employees match the current filters.</div></td></tr>
-              ) : displayed.map(emp => {
+              ) : displayed.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map(emp => {
                 const util = calcUtilization(emp.id, state.projects);
                 const uStat = utilizationStatus(util);
                 const att = calcAttendancePct(emp.id, state.attendance);
                 const onLeave = isOnLeaveToday(emp.id, state.leaves);
                 return (
-                  <tr key={emp.id} onClick={() => setSelected(s => s?.id === emp.id ? null : emp)} style={{ cursor: 'pointer' }}>
+                  <tr key={emp.id} onClick={() => setSelected(s => s?.id === emp.id ? null : emp)} style={{ cursor: 'pointer', opacity: emp.status === 'Inactive' ? 0.6 : 1 }}>
                     <td>
                       <div className="flex gap-sm flex-center">
                         <div className="avatar avatar-sm" style={{ background: avatarColor(emp.name), color: '#fff' }}>{emp.avatar}</div>
                         <div>
-                          <div className="fw-6" style={{ fontSize: '0.875rem' }}>{emp.name}</div>
+                          <div className="fw-6" style={{ fontSize: '0.875rem' }}>{emp.name} {emp.status === 'Inactive' && <span className="text-xs text-muted">(Inactive)</span>}</div>
                           <div className="text-xs text-muted">{emp.role}</div>
                         </div>
                         {onLeave && <span className="badge badge-warning" style={{ fontSize: '0.65rem', marginLeft: '0.25rem' }}>Leave</span>}
@@ -293,18 +310,30 @@ export default function EmployeeList() {
                     <td>
                       <span style={{ fontWeight: 700, color: emp.performance >= 9 ? 'var(--success)' : emp.performance >= 7 ? 'var(--warning)' : 'var(--danger)' }}>{emp.performance}/10</span>
                     </td>
-                    <td onClick={e => e.stopPropagation()}>
-                      <div className="flex gap-sm">
-                        <button className="btn btn-ghost btn-sm" onClick={() => setModal(emp)}>Edit</button>
-                        <button className="btn btn-danger btn-sm" onClick={() => handleDelete(emp)}>Delete</button>
-                      </div>
-                    </td>
+                    {canManage && (
+                      <td onClick={e => e.stopPropagation()}>
+                        <div className="flex gap-sm">
+                          <button className="btn btn-ghost btn-sm" onClick={() => setModal(emp)}>Edit</button>
+                          <button className="btn btn-danger btn-sm" onClick={() => handleDelete(emp)}>Delete</button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 );
               })}
             </tbody>
           </table>
         </div>
+
+        {displayed.length > itemsPerPage && (
+          <div className="flex-between mt-1" style={{ padding: '0.5rem 1rem' }}>
+            <span className="text-sm text-muted">Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, displayed.length)} of {displayed.length}</span>
+            <div className="flex gap-sm">
+              <button className="btn btn-ghost btn-sm" disabled={currentPage === 1} onClick={() => setCurrentPage(p => p - 1)}>Prev</button>
+              <button className="btn btn-ghost btn-sm" disabled={currentPage * itemsPerPage >= displayed.length} onClick={() => setCurrentPage(p => p + 1)}>Next</button>
+            </div>
+          </div>
+        )}
 
         {selected && <EmployeeDetailPanel emp={selected} onClose={() => setSelected(null)} />}
       </div>
