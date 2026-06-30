@@ -41,17 +41,17 @@ function reducer(state, action) {
     }
     case 'UPDATE_EMPLOYEE': {
       const updated = action.payload;
-      return { ...state, employees: state.employees.map(e => e.id === updated.id ? updated : e), activityLogs: log(state, 'Updated Employee', `${updated.name}'s profile was updated.`) };
+      return { ...state, employees: state.employees.map(e => String(e.id) === String(updated.id) ? updated : e), activityLogs: log(state, 'Updated Employee', `${updated.name}'s profile was updated.`) };
     }
     case 'DELETE_EMPLOYEE': {
       const id = action.payload;
-      const emp = state.employees.find(e => e.id === id);
+      const emp = state.employees.find(e => String(e.id) === String(id));
       return {
         ...state,
-        employees: state.employees.filter(e => e.id !== id),
-        projects: state.projects.map(p => ({ ...p, assignments: p.assignments.filter(a => a.employeeId !== id) })),
-        attendance: state.attendance.filter(a => a.employeeId !== id),
-        leaves: state.leaves.filter(l => l.employeeId !== id),
+        employees: state.employees.filter(e => String(e.id) !== String(id)),
+        projects: state.projects.map(p => ({ ...p, assignments: p.assignments.filter(a => String(a.employeeId) !== String(id)) })),
+        attendance: state.attendance.filter(a => String(a.employeeId) !== String(id)),
+        leaves: state.leaves.filter(l => String(l.employeeId) !== String(id)),
         activityLogs: log(state, 'Terminated Employee', `${emp?.name || id} was removed (cascade delete applied).`)
       };
     }
@@ -66,12 +66,12 @@ function reducer(state, action) {
     }
     case 'UPDATE_PROJECT': {
       const proj = action.payload;
-      return { ...state, projects: state.projects.map(p => p.id === proj.id ? proj : p), activityLogs: log(state, 'Updated Project', `Project "${proj.name}" was updated.`) };
+      return { ...state, projects: state.projects.map(p => String(p.id) === String(proj.id) ? proj : p), activityLogs: log(state, 'Updated Project', `Project "${proj.name}" was updated.`) };
     }
     case 'DELETE_PROJECT': {
       const id = action.payload;
-      const proj = state.projects.find(p => p.id === id);
-      return { ...state, projects: state.projects.filter(p => p.id !== id), activityLogs: log(state, 'Deleted Project', `Project "${proj?.name || id}" was removed.`) };
+      const proj = state.projects.find(p => String(p.id) === String(id));
+      return { ...state, projects: state.projects.filter(p => String(p.id) !== String(id)), activityLogs: log(state, 'Deleted Project', `Project "${proj?.name || id}" was removed.`) };
     }
     case 'ASSIGN_TO_PROJECT': {
       const { projectId, employeeId, allocation } = action.payload;
@@ -101,8 +101,11 @@ function reducer(state, action) {
     // ── Attendance ─────────────────────────────────
     case 'UPDATE_ATTENDANCE': {
       const rec = action.payload;
-      const exists = state.attendance.find(a => a.employeeId === rec.employeeId);
-      return { ...state, attendance: exists ? state.attendance.map(a => a.employeeId === rec.employeeId ? rec : a) : [...state.attendance, rec] };
+      // Normalize employeeId to number
+      const recId = Number(rec.employeeId);
+      const normalized = { ...rec, employeeId: recId };
+      const exists = state.attendance.find(a => Number(a.employeeId) === recId);
+      return { ...state, attendance: exists ? state.attendance.map(a => Number(a.employeeId) === recId ? normalized : a) : [...state.attendance, normalized] };
     }
     case 'SET_ATTENDANCE':
       return { ...state, attendance: action.payload };
@@ -155,9 +158,24 @@ export function AppProvider({ children }) {
         ]);
         
         dispatch({ type: 'SET_EMPLOYEES', payload: empData });
-        dispatch({ type: 'SET_LEAVES', payload: leaveData });
+        
+        // Normalize leave data: flatten nested employee object
+        const normalizedLeaves = leaveData.map(l => ({
+          id: l.id,
+          employeeId: l.employee?.id ?? l.employeeId,
+          type: l.leaveType ?? l.type,
+          startDate: l.startDate,
+          endDate: l.endDate,
+          reason: l.reason,
+          status: l.status
+        }));
+        dispatch({ type: 'SET_LEAVES', payload: normalizedLeaves });
+        
+        // Normalize attendance: ensure employeeId is a number
+        const normalizedAttendance = attData.map(a => ({ ...a, employeeId: Number(a.employeeId) }));
+        dispatch({ type: 'SET_ATTENDANCE', payload: normalizedAttendance });
+        
         dispatch({ type: 'SET_PROJECTS', payload: projData });
-        dispatch({ type: 'SET_ATTENDANCE', payload: attData });
       } catch (error) {
         console.error("Failed to load backend data. Ensure Spring Boot and MySQL are running.", error);
       }

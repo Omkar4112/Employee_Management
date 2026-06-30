@@ -1,8 +1,9 @@
 // ── Resource Allocation Engine ─────────────────────────────────────────────
+// Uses String() comparison throughout to handle mixed Long/string IDs from MySQL
 export function calcUtilization(employeeId, projects) {
   return projects
     .flatMap(p => p.assignments)
-    .filter(a => a.employeeId === employeeId)
+    .filter(a => String(a.employeeId) === String(employeeId))
     .reduce((sum, a) => sum + (a.allocation || 0), 0);
 }
 
@@ -13,7 +14,7 @@ export function utilizationStatus(pct) {
 }
 
 export function getEmployeeProjects(employeeId, projects) {
-  return projects.filter(p => p.assignments.some(a => a.employeeId === employeeId));
+  return projects.filter(p => p.assignments.some(a => String(a.employeeId) === String(employeeId)));
 }
 
 export function calcTeamUtilizationDistribution(employees, projects) {
@@ -25,3 +26,4 @@ export function calcTeamUtilizationDistribution(employees, projects) {
   });
   return dist;
 }
+

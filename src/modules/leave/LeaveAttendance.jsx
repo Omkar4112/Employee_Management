@@ -12,6 +12,13 @@ function LeaveModal({ onClose }) {
   const user = state.auth.user;
   const isEmployee = user.role === 'EMPLOYEE';
 
+  // Pre-fill employeeId for employees
+  React.useEffect(() => {
+    if (isEmployee && user.id) {
+      setForm(f => ({ ...f, employeeId: String(user.id) }));
+    }
+  }, [isEmployee, user.id]);
+
   const checkConflict = () => {
     if (form.employeeId && form.startDate && form.endDate) {
       const hasConflict = detectLeaveConflict({ ...form }, state.leaves);
@@ -22,13 +29,34 @@ function LeaveModal({ onClose }) {
   const submit = async ev => {
     ev.preventDefault();
     if (conflict) return;
+    if (!form.employeeId) { alert('Please select an employee.'); return; }
+    
+    // Build payload matching the Spring Boot Leave entity structure
+    const payload = {
+      employee: { id: Number(form.employeeId) },
+      leaveType: form.type,
+      startDate: form.startDate,
+      endDate: form.endDate,
+      reason: form.reason,
+      status: 'Pending'
+    };
     
     try {
-      const created = await applyForLeave({ ...form, status: 'Pending' });
-      dispatch({ type: 'APPLY_LEAVE', payload: created });
+      const created = await applyForLeave(payload);
+      // Normalize response for frontend state
+      const normalized = {
+        id: created.id,
+        employeeId: created.employee?.id || Number(form.employeeId),
+        type: created.leaveType,
+        startDate: created.startDate,
+        endDate: created.endDate,
+        reason: created.reason,
+        status: created.status
+      };
+      dispatch({ type: 'APPLY_LEAVE', payload: normalized });
       onClose();
     } catch (err) {
-      alert("Failed to apply for leave: " + err.message);
+      alert('Failed to apply for leave: ' + (err.response?.data?.message || err.message));
     }
   };
 

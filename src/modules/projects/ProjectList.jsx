@@ -6,22 +6,22 @@ import { createProject, updateProject, deleteProject, assignEmployeeToProject, r
 function ProjectModal({ project, employees, onClose }) {
   const { dispatch } = useApp();
   const isEdit = !!project;
-  const [form, setForm] = useState(project || { id: `p${Date.now()}`, name: '', status: 'Active', deadline: '', assignments: [] });
+  const [form, setForm] = useState(project ? { ...project } : { name: '', status: 'Active', deadline: '', assignments: [] });
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
 
   const submit = async ev => {
     ev.preventDefault();
     try {
       if (isEdit) {
-        const updated = await updateProject(form.id, form);
+        const updated = await updateProject(form.id, { name: form.name, status: form.status, deadline: form.deadline });
         dispatch({ type: 'UPDATE_PROJECT', payload: updated });
       } else {
-        const created = await createProject(form);
+        const created = await createProject({ name: form.name, status: form.status, deadline: form.deadline });
         dispatch({ type: 'ADD_PROJECT', payload: created });
       }
       onClose();
     } catch (err) {
-      alert("Failed to save project: " + err.message);
+      alert('Failed to save project: ' + (err.response?.data?.message || err.message));
     }
   };
 
@@ -70,11 +70,11 @@ function AssignModal({ project, employees, onClose }) {
     ev.preventDefault();
     if (!employeeId) return;
     try {
-      const updated = await assignEmployeeToProject(project.id, employeeId, Number(allocation));
+      const updated = await assignEmployeeToProject(project.id, Number(employeeId), Number(allocation));
       dispatch({ type: 'UPDATE_PROJECT', payload: updated });
       setEmployeeId(''); setAllocation(50);
     } catch (err) {
-      alert("Failed to assign employee: " + err.message);
+      alert('Failed to assign employee: ' + (err.response?.data?.message || err.message));
     }
   };
 
@@ -223,7 +223,7 @@ export default function ProjectList() {
                     const s = utilizationStatus(totalUtil);
                     return (
                       <div key={a.employeeId} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                        <div style={{ width: '26px', height: '26px', borderRadius: '50%', background: s.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem', fontWeight: 700, color: '#fff', flexShrink: 0 }}>{emp.avatar}</div>
+                        <div style={{ width: '26px', height: '26px', borderRadius: '50%', background: s.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem', fontWeight: 700, color: '#fff', flexShrink: 0 }}>{emp.name ? emp.name.substring(0,2).toUpperCase() : '??'}</div>
                         <span className="text-sm" style={{ flex: 1 }}>{emp.name}</span>
                         <span className="text-xs fw-6">{a.allocation}%</span>
                         <div className="progress-bar" style={{ width: '50px' }}>

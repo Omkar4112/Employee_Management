@@ -23,7 +23,7 @@ function avatarColor(name = '') {
 
 function EmployeeModal({ employee, onClose, employees }) {
   const { state, dispatch } = useApp();
-  const [form, setForm] = useState(employee || { name: '', role: '', department: 'Engineering', status: 'Active', salary: '', performanceScore: '', manager: '', joinDate: new Date().toISOString().slice(0,10) });
+  const [form, setForm] = useState(employee ? { ...employee } : { name: '', role: '', department: 'Engineering', status: 'Active', salary: '', performanceScore: '', manager: '', joinDate: new Date().toISOString().slice(0,10), email: '' });
   const isEdit = !!employee;
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
 
@@ -31,11 +31,13 @@ function EmployeeModal({ employee, onClose, employees }) {
     ev.preventDefault();
     const payload = { 
       ...form, 
-      salary: Number(form.salary), 
-      performanceScore: Number(form.performanceScore),
-      email: form.name.toLowerCase().replace(' ', '.') + '@company.com',
-      accessLevel: form.department === 'HR' ? 'HR' : 'Employee'
+      salary: Number(form.salary) || 0, 
+      performanceScore: Number(form.performanceScore) || 0,
+      email: form.email || form.name.toLowerCase().replace(/\s+/g, '.') + '@company.com',
+      accessLevel: form.accessLevel || (form.department === 'HR' ? 'HR' : 'Employee')
     };
+    // Do not send id on create
+    if (!isEdit) delete payload.id;
     
     try {
       if (isEdit) {
@@ -107,7 +109,7 @@ function EmployeeModal({ employee, onClose, employees }) {
   );
 }
 
-function EmployeeDetailPanel({ emp, onClose }) {
+function EmployeeDetailPanel({ emp, onClose, canSeeSalary }) {
   const { state } = useApp();
   if (!emp) return null;
   const util = calcUtilization(emp.id, state.projects);
@@ -355,7 +357,7 @@ export default function EmployeeList() {
           </div>
         )}
 
-        {selected && <EmployeeDetailPanel emp={selected} onClose={() => setSelected(null)} />}
+        {selected && <EmployeeDetailPanel emp={selected} canSeeSalary={canSeeSalary} onClose={() => setSelected(null)} />}
       </div>
 
       {modal && (
