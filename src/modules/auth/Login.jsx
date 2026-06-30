@@ -30,7 +30,13 @@ export default function Login() {
       
       dispatch({ type: 'LOGIN', payload: sessionUser });
     } catch (err) {
-      setError('Invalid email or password. (User not found in database)');
+      if (err.response && err.response.status === 404) {
+        setError('Invalid email or password. (User not found in database)');
+      } else if (err.code === 'ERR_NETWORK') {
+        setError('Network Error: Could not connect to the Spring Boot backend. Is it running?');
+      } else {
+        setError(`Login failed: ${err.message}`);
+      }
     }
   };
 
