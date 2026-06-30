@@ -44,6 +44,12 @@ public class EmployeeService {
     }
 
     @Transactional(readOnly = true)
+    public Employee getEmployeeByEmail(String email) {
+        return employeeRepository.findByEmail(email)
+                .orElseThrow(() -> new ResourceNotFoundException("Employee not found with email: " + email));
+    }
+
+    @Transactional(readOnly = true)
     public List<Employee> getEmployeesByDepartment(String department) {
         return employeeRepository.findByDepartment(department);
     }

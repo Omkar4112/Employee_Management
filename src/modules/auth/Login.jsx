@@ -1,23 +1,37 @@
 import React, { useState } from 'react';
 import { useApp } from '../../store/AppContext';
+import api from '../../services/api';
 import '../../index.css';
 
 export default function Login() {
   const { dispatch } = useApp();
-  const [role, setRole] = useState('ADMIN');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
     if (!email || !password) {
       setError('Please enter both email and password.');
       return;
     }
     
-    // Mock authentication
-    dispatch({ type: 'LOGIN', payload: { role, email } });
+    try {
+      // Authenticate with MySQL backend
+      const response = await api.get(`/employees/email/${email}`);
+      const user = response.data;
+      
+      // Role mapping based on accessLevel
+      let role = 'EMPLOYEE';
+      if (user.accessLevel === 'Admin') role = 'ADMIN';
+      if (user.accessLevel === 'HR') role = 'HR';
+      
+      const sessionUser = { id: user.id, name: user.name, role: role, email: user.email, department: user.department };
+      
+      dispatch({ type: 'LOGIN', payload: sessionUser });
+    } catch (err) {
+      setError('Invalid email or password. (User not found in database)');
+    }
   };
 
   return (
@@ -42,24 +56,13 @@ export default function Login() {
             <input type="password" className="form-control" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" />
           </div>
 
-          <div className="form-group">
-            <label className="form-label">Login As (Demo)</label>
-            <div className="flex gap-sm">
-              {['ADMIN', 'HR', 'EMPLOYEE'].map(r => (
-                <button key={r} type="button" className={`btn ${role === r ? 'btn-primary' : 'btn-ghost'}`} style={{ flex: 1, padding: '0.5rem', fontSize: '0.75rem' }} onClick={() => setRole(r)}>
-                  {r}
-                </button>
-              ))}
-            </div>
-          </div>
-
           <button type="submit" className="btn btn-primary mt-2" style={{ width: '100%', justifyContent: 'center', padding: '0.75rem' }}>
             Sign In
           </button>
         </form>
 
         <div style={{ textAlign: 'center', marginTop: '1.5rem', fontSize: '0.75rem', color: 'var(--text-3)' }}>
-          <p>Demo Credentials: Any email/password will work.</p>
+          <p>Login with an existing database email (e.g. alice@company.com). Any password works for now.</p>
         </div>
       </div>
     </div>

@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../../store/AppContext';
 import { calcUtilization, utilizationStatus } from '../../engines/ResourceEngine';
+import { createProject, updateProject, deleteProject, assignEmployeeToProject, removeEmployeeFromProject } from '../../services/projectService';
 
 function ProjectModal({ project, employees, onClose }) {
   const { dispatch } = useApp();
@@ -8,10 +9,20 @@ function ProjectModal({ project, employees, onClose }) {
   const [form, setForm] = useState(project || { id: `p${Date.now()}`, name: '', status: 'Active', deadline: '', assignments: [] });
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
 
-  const submit = ev => {
+  const submit = async ev => {
     ev.preventDefault();
-    dispatch({ type: isEdit ? 'UPDATE_PROJECT' : 'ADD_PROJECT', payload: form });
-    onClose();
+    try {
+      if (isEdit) {
+        const updated = await updateProject(form.id, form);
+        dispatch({ type: 'UPDATE_PROJECT', payload: updated });
+      } else {
+        const created = await createProject(form);
+        dispatch({ type: 'ADD_PROJECT', payload: created });
+      }
+      onClose();
+    } catch (err) {
+      alert("Failed to save project: " + err.message);
+    }
   };
 
   return (
@@ -55,14 +66,26 @@ function AssignModal({ project, employees, onClose }) {
 
   const unassigned = employees.filter(e => !project.assignments.some(a => a.employeeId === e.id));
 
-  const submit = ev => {
+  const submit = async ev => {
     ev.preventDefault();
     if (!employeeId) return;
-    dispatch({ type: 'ASSIGN_TO_PROJECT', payload: { projectId: project.id, employeeId, allocation: Number(allocation) } });
-    setEmployeeId(''); setAllocation(50);
+    try {
+      const updated = await assignEmployeeToProject(project.id, employeeId, Number(allocation));
+      dispatch({ type: 'UPDATE_PROJECT', payload: updated });
+      setEmployeeId(''); setAllocation(50);
+    } catch (err) {
+      alert("Failed to assign employee: " + err.message);
+    }
   };
 
-  const removeAssignment = empId => dispatch({ type: 'REMOVE_FROM_PROJECT', payload: { projectId: project.id, employeeId: empId } });
+  const removeAssignment = async empId => {
+    try {
+      const updated = await removeEmployeeFromProject(project.id, empId);
+      dispatch({ type: 'UPDATE_PROJECT', payload: updated });
+    } catch (err) {
+      alert("Failed to remove assignment: " + err.message);
+    }
+  };
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -134,8 +157,15 @@ export default function ProjectList() {
   const [modal, setModal] = useState(null); // null | 'add' | project
   const [assignModal, setAssignModal] = useState(null);
 
-  const handleDelete = proj => {
-    if (window.confirm(`Delete "${proj.name}"?`)) dispatch({ type: 'DELETE_PROJECT', payload: proj.id });
+  const handleDelete = async proj => {
+    if (window.confirm(`Delete "${proj.name}"?`)) {
+      try {
+        await deleteProject(proj.id);
+        dispatch({ type: 'DELETE_PROJECT', payload: proj.id });
+      } catch (err) {
+        alert("Failed to delete project: " + err.message);
+      }
+    }
   };
 
   const statusColor = { Active: 'badge-success', Planning: 'badge-info', 'On Hold': 'badge-warning', Completed: 'badge-neutral' };

@@ -2,8 +2,14 @@ package com.workforce.management;
 
 import com.workforce.management.entity.Department;
 import com.workforce.management.entity.Employee;
+import com.workforce.management.entity.Project;
+import com.workforce.management.entity.ProjectAssignment;
+import com.workforce.management.entity.Attendance;
 import com.workforce.management.repository.DepartmentRepository;
 import com.workforce.management.repository.EmployeeRepository;
+import com.workforce.management.repository.ProjectRepository;
+import com.workforce.management.repository.ProjectAssignmentRepository;
+import com.workforce.management.repository.AttendanceRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
@@ -25,6 +31,9 @@ public class DataSeeder implements CommandLineRunner {
 
     private final DepartmentRepository departmentRepository;
     private final EmployeeRepository employeeRepository;
+    private final ProjectRepository projectRepository;
+    private final ProjectAssignmentRepository projectAssignmentRepository;
+    private final AttendanceRepository attendanceRepository;
 
     @Override
     public void run(String... args) throws Exception {
@@ -65,6 +74,27 @@ public class DataSeeder implements CommandLineRunner {
                     .status("Active").manager("Alice Johnson").joinDate("2021-09-20").build());
 
             log.info("--- Employees seeded successfully ---");
+        }
+
+        if (projectRepository.count() == 0) {
+            log.info("--- Seeding projects & assignments ---");
+            Project p1 = projectRepository.save(Project.builder().name("Phoenix Platform").status("Active").deadline("2026-08-01").build());
+            Project p2 = projectRepository.save(Project.builder().name("Nexus API Migration").status("Planning").deadline("2026-10-15").build());
+            
+            projectAssignmentRepository.save(ProjectAssignment.builder().projectId(p1.getId()).employeeId(1L).allocation(50).build());
+            projectAssignmentRepository.save(ProjectAssignment.builder().projectId(p1.getId()).employeeId(3L).allocation(80).build());
+            projectAssignmentRepository.save(ProjectAssignment.builder().projectId(p2.getId()).employeeId(1L).allocation(30).build());
+            projectAssignmentRepository.save(ProjectAssignment.builder().projectId(p2.getId()).employeeId(4L).allocation(100).build());
+            log.info("--- Projects seeded successfully ---");
+        }
+
+        if (attendanceRepository.count() == 0) {
+            log.info("--- Seeding attendance ---");
+            attendanceRepository.save(Attendance.builder().employeeId(1L).presentDays(20).totalDays(20).build());
+            attendanceRepository.save(Attendance.builder().employeeId(2L).presentDays(19).totalDays(20).build());
+            attendanceRepository.save(Attendance.builder().employeeId(3L).presentDays(18).totalDays(20).build());
+            attendanceRepository.save(Attendance.builder().employeeId(4L).presentDays(17).totalDays(20).build());
+            log.info("--- Attendance seeded successfully ---");
         }
     }
 }

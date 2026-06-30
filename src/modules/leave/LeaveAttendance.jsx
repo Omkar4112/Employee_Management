@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useApp } from '../../store/AppContext';
 import { calcAttendancePct, isOnLeaveToday, detectLeaveConflict, calcLeaveBalance } from '../../engines/AttendanceEngine';
 import { applyForLeave, approveLeave, rejectLeave } from '../../services/leaveService';
+import { updateAttendance as updateAttendanceApi } from '../../services/attendanceService';
 
 function LeaveModal({ onClose }) {
   const { state, dispatch } = useApp();
@@ -119,10 +120,16 @@ export default function LeaveAttendance() {
     }
   };
 
-  const updateAttendance = (employeeId, field, value) => {
+  const updateAttendance = async (employeeId, field, value) => {
     if (!canManage) return; // Strict RBAC
     const existing = state.attendance.find(a => a.employeeId === employeeId) || { employeeId, presentDays: 0, totalDays: 20 };
-    dispatch({ type: 'UPDATE_ATTENDANCE', payload: { ...existing, [field]: Number(value) } });
+    const updated = { ...existing, [field]: Number(value) };
+    try {
+      const saved = await updateAttendanceApi(employeeId, updated.presentDays, updated.totalDays);
+      dispatch({ type: 'UPDATE_ATTENDANCE', payload: saved });
+    } catch (err) {
+      alert("Failed to update attendance: " + err.message);
+    }
   };
 
   const leaveStatusColor = { Approved: 'badge-success', Pending: 'badge-warning', Rejected: 'badge-danger' };

@@ -55,6 +55,15 @@ public class EmployeeController {
     }
 
     // =====================================================
+    // GET /api/employees/email/{email}
+    // Fetch a single employee by email (used for login)
+    // =====================================================
+    @GetMapping("/email/{email}")
+    public ResponseEntity<Employee> getEmployeeByEmail(@PathVariable String email) {
+        return ResponseEntity.ok(employeeService.getEmployeeByEmail(email));
+    }
+
+    // =====================================================
     // POST /api/employees
     // Create (hire) a new employee
     // @Valid triggers bean validation annotations on Employee
