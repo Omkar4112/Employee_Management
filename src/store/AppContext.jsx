@@ -1,4 +1,6 @@
 import React, { createContext, useReducer, useEffect, useContext, useCallback } from 'react';
+import { getAllEmployees } from '../services/employeeService';
+import { getAllLeaves } from '../services/leaveService';
 
 // ─── Seed Data ────────────────────────────────────────────────────────────────
 const SEED = {
@@ -112,6 +114,9 @@ function reducer(state, action) {
         activityLogs: log(state, 'Terminated Employee', `${emp?.name || id} was removed (cascade delete applied).`)
       };
     }
+    
+    case 'SET_EMPLOYEES':
+      return { ...state, employees: action.payload };
 
     // ── Projects ───────────────────────────────────
     case 'ADD_PROJECT': {
@@ -162,6 +167,10 @@ function reducer(state, action) {
       const emp = state.employees.find(e => e.id === leave.employeeId);
       return { ...state, leaves: [...state.leaves, leave], activityLogs: log(state, 'Leave Applied', `${emp?.name || leave.employeeId} applied for ${leave.type} leave.`) };
     }
+    
+    case 'SET_LEAVES':
+      return { ...state, leaves: action.payload };
+
     case 'UPDATE_LEAVE_STATUS': {
       const { id, status } = action.payload;
       const leave = state.leaves.find(l => l.id === id);
@@ -187,6 +196,24 @@ function loadState() {
 
 export function AppProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, undefined, loadState);
+
+  // Fetch from Spring Boot MySQL Backend on load
+  useEffect(() => {
+    async function fetchInitialData() {
+      if (state.auth.isAuthenticated) {
+        try {
+          const empData = await getAllEmployees();
+          dispatch({ type: 'SET_EMPLOYEES', payload: empData });
+          
+          const leaveData = await getAllLeaves();
+          dispatch({ type: 'SET_LEAVES', payload: leaveData });
+        } catch (error) {
+          console.error("Failed to load backend data. Ensure Spring Boot and MySQL are running.", error);
+        }
+      }
+    }
+    fetchInitialData();
+  }, [state.auth.isAuthenticated]);
 
   useEffect(() => {
     try { localStorage.setItem('wfm_state_v3', JSON.stringify(state)); } catch { /* ignore */ }

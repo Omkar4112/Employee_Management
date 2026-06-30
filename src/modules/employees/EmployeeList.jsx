@@ -3,6 +3,7 @@ import { useApp } from '../../store/AppContext';
 import { calcUtilization, utilizationStatus, getEmployeeProjects } from '../../engines/ResourceEngine';
 import { calcAttendancePct, isOnLeaveToday } from '../../engines/AttendanceEngine';
 import { applyFilters } from '../../engines/InsightsEngine';
+import { createEmployee, updateEmployee, deleteEmployee, getAllEmployees } from '../../services/employeeService';
 
 const DEPTS = ['Engineering', 'Design', 'Product', 'Executive', 'HR'];
 const OPS = ['=', '!=', '>', '>=', '<', '<=', 'contains'];
@@ -10,7 +11,7 @@ const FILTER_FIELDS = [
   { value: 'department', label: 'Department' },
   { value: 'role', label: 'Role' },
   { value: 'performance', label: 'Performance' },
-  { value: 'salary', label: 'Salary' },
+  { value: 'salary', label: 'Salary', adminOnly: true },
   { value: 'utilization', label: 'Utilization %' },
   { value: 'attendance', label: 'Attendance %' },
 ];
@@ -22,15 +23,32 @@ function avatarColor(name = '') {
 
 function EmployeeModal({ employee, onClose, employees }) {
   const { state, dispatch } = useApp();
-  const [form, setForm] = useState(employee || { id: `e${Date.now()}`, name: '', role: '', department: 'Engineering', status: 'Active', salary: '', performance: '', managerId: '', joinDate: new Date().toISOString().slice(0,10), avatar: '' });
+  const [form, setForm] = useState(employee || { name: '', role: '', department: 'Engineering', status: 'Active', salary: '', performanceScore: '', manager: '', joinDate: new Date().toISOString().slice(0,10) });
   const isEdit = !!employee;
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
 
-  const submit = (ev) => {
+  const submit = async (ev) => {
     ev.preventDefault();
-    const payload = { ...form, salary: Number(form.salary), performance: Number(form.performance), avatar: form.name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2) };
-    dispatch({ type: isEdit ? 'UPDATE_EMPLOYEE' : 'ADD_EMPLOYEE', payload });
-    onClose();
+    const payload = { 
+      ...form, 
+      salary: Number(form.salary), 
+      performanceScore: Number(form.performanceScore),
+      email: form.name.toLowerCase().replace(' ', '.') + '@company.com',
+      accessLevel: form.department === 'HR' ? 'HR' : 'Employee'
+    };
+    
+    try {
+      if (isEdit) {
+        const updated = await updateEmployee(payload.id, payload);
+        dispatch({ type: 'UPDATE_EMPLOYEE', payload: updated });
+      } else {
+        const created = await createEmployee(payload);
+        dispatch({ type: 'ADD_EMPLOYEE', payload: created });
+      }
+      onClose();
+    } catch (err) {
+      alert("Failed to save to backend: " + (err.response?.data?.message || err.message));
+    }
   };
 
   return (
@@ -63,11 +81,8 @@ function EmployeeModal({ employee, onClose, employees }) {
               </select>
             </div>
             <div className="form-group">
-              <label className="form-label">Manager</label>
-              <select className="form-control" value={form.managerId || ''} onChange={set('managerId')}>
-                <option value="">— No Manager (Top-Level) —</option>
-                {employees.filter(e => e.id !== form.id).map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-              </select>
+              <label className="form-label">Manager Name</label>
+              <input className="form-control" value={form.manager || ''} onChange={set('manager')} placeholder="Manager Name" />
             </div>
             <div className="form-group">
               <label className="form-label">Salary (USD)</label>
@@ -75,7 +90,7 @@ function EmployeeModal({ employee, onClose, employees }) {
             </div>
             <div className="form-group">
               <label className="form-label">Performance (0-10)</label>
-              <input type="number" min="0" max="10" step="0.1" className="form-control" value={form.performance} onChange={set('performance')} placeholder="8.5" />
+              <input type="number" min="0" max="10" step="0.1" className="form-control" value={form.performanceScore} onChange={set('performanceScore')} placeholder="8.5" />
             </div>
             <div className="form-group">
               <label className="form-label">Join Date</label>
@@ -108,7 +123,7 @@ function EmployeeDetailPanel({ emp, onClose }) {
         <button className="btn btn-ghost btn-sm" onClick={onClose}>✕</button>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem', padding: '1rem 0', borderBottom: '1px solid var(--border)', marginBottom: '1rem' }}>
-        <div className="avatar avatar-lg" style={{ background: avatarColor(emp.name), color: '#fff' }}>{emp.avatar}</div>
+        <div className="avatar avatar-lg" style={{ background: avatarColor(emp.name), color: '#fff' }}>{emp.name.substring(0,2).toUpperCase()}</div>
         <div style={{ textAlign: 'center' }}>
           <div className="fw-7" style={{ fontSize: '1.1rem' }}>{emp.name}</div>
           <div className="text-muted text-sm">{emp.role}</div>
@@ -121,7 +136,7 @@ function EmployeeDetailPanel({ emp, onClose }) {
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
         {[
-          { label: 'Performance', value: `${emp.performance}/10`, color: emp.performance >= 9 ? 'var(--success)' : emp.performance >= 7 ? 'var(--warning)' : 'var(--danger)' },
+          { label: 'Performance', value: `${emp.performanceScore || 0}/10`, color: (emp.performanceScore || 0) >= 9 ? 'var(--success)' : (emp.performanceScore || 0) >= 7 ? 'var(--warning)' : 'var(--danger)' },
           ...(canSeeSalary ? [{ label: 'Salary', value: `$${Number(emp.salary).toLocaleString()}` }] : []),
           { label: 'Join Date', value: new Date(emp.joinDate).toLocaleDateString() },
         ].map(r => (
@@ -206,10 +221,15 @@ export default function EmployeeList() {
   const toggleSort = key => setSort(s => s.key === key ? { key, dir: -s.dir } : { key, dir: 1 });
   const sortIcon = key => sort.key === key ? (sort.dir === 1 ? ' ↑' : ' ↓') : '';
 
-  const handleDelete = emp => {
+  const handleDelete = async emp => {
     if (window.confirm(`Delete ${emp.name}? This will cascade remove all their project assignments and leaves.`)) {
-      dispatch({ type: 'DELETE_EMPLOYEE', payload: emp.id });
-      if (selected?.id === emp.id) setSelected(null);
+      try {
+        await deleteEmployee(emp.id);
+        dispatch({ type: 'DELETE_EMPLOYEE', payload: emp.id });
+        if (selected?.id === emp.id) setSelected(null);
+      } catch (err) {
+        alert("Failed to delete from backend.");
+      }
     }
   };
 
@@ -230,7 +250,7 @@ export default function EmployeeList() {
           <div className="form-group" style={{ minWidth: 140 }}>
             <label className="form-label">Field</label>
             <select className="form-control" value={filterForm.field} onChange={e => setFilterForm(f => ({ ...f, field: e.target.value }))}>
-              {FILTER_FIELDS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+              {FILTER_FIELDS.filter(f => !f.adminOnly || canManage).map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
             </select>
           </div>
           <div className="form-group" style={{ minWidth: 80 }}>
@@ -286,7 +306,7 @@ export default function EmployeeList() {
                   <tr key={emp.id} onClick={() => setSelected(s => s?.id === emp.id ? null : emp)} style={{ cursor: 'pointer', opacity: emp.status === 'Inactive' ? 0.6 : 1 }}>
                     <td>
                       <div className="flex gap-sm flex-center">
-                        <div className="avatar avatar-sm" style={{ background: avatarColor(emp.name), color: '#fff' }}>{emp.avatar}</div>
+                        <div className="avatar avatar-sm" style={{ background: avatarColor(emp.name), color: '#fff' }}>{emp.name.substring(0,2).toUpperCase()}</div>
                         <div>
                           <div className="fw-6" style={{ fontSize: '0.875rem' }}>{emp.name} {emp.status === 'Inactive' && <span className="text-xs text-muted">(Inactive)</span>}</div>
                           <div className="text-xs text-muted">{emp.role}</div>
@@ -308,7 +328,7 @@ export default function EmployeeList() {
                       <span style={{ fontWeight: 600, color: att >= 90 ? 'var(--success)' : att >= 80 ? 'var(--warning)' : 'var(--danger)' }}>{att}%</span>
                     </td>
                     <td>
-                      <span style={{ fontWeight: 700, color: emp.performance >= 9 ? 'var(--success)' : emp.performance >= 7 ? 'var(--warning)' : 'var(--danger)' }}>{emp.performance}/10</span>
+                      <span style={{ fontWeight: 700, color: (emp.performanceScore || 0) >= 9 ? 'var(--success)' : (emp.performanceScore || 0) >= 7 ? 'var(--warning)' : 'var(--danger)' }}>{emp.performanceScore || 0}/10</span>
                     </td>
                     {canManage && (
                       <td onClick={e => e.stopPropagation()}>

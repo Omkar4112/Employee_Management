@@ -1,12 +1,15 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../../store/AppContext';
 import { calcAttendancePct, isOnLeaveToday, detectLeaveConflict, calcLeaveBalance } from '../../engines/AttendanceEngine';
+import { applyForLeave, approveLeave, rejectLeave } from '../../services/leaveService';
 
 function LeaveModal({ onClose }) {
   const { state, dispatch } = useApp();
   const [form, setForm] = useState({ employeeId: '', type: 'Annual', startDate: '', endDate: '', reason: '' });
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
   const [conflict, setConflict] = useState(false);
+  const user = state.auth.user;
+  const isEmployee = user.role === 'EMPLOYEE';
 
   const checkConflict = () => {
     if (form.employeeId && form.startDate && form.endDate) {
@@ -15,11 +18,17 @@ function LeaveModal({ onClose }) {
     }
   };
 
-  const submit = ev => {
+  const submit = async ev => {
     ev.preventDefault();
     if (conflict) return;
-    dispatch({ type: 'APPLY_LEAVE', payload: { ...form, id: `l${Date.now()}`, status: 'Pending' } });
-    onClose();
+    
+    try {
+      const created = await applyForLeave({ ...form, status: 'Pending' });
+      dispatch({ type: 'APPLY_LEAVE', payload: created });
+      onClose();
+    } catch (err) {
+      alert("Failed to apply for leave: " + err.message);
+    }
   };
 
   const emp = form.employeeId ? state.employees.find(e => e.id === form.employeeId) : null;
@@ -35,10 +44,16 @@ function LeaveModal({ onClose }) {
         <form onSubmit={submit} className="modal-body">
           <div className="form-group">
             <label className="form-label">Employee *</label>
-            <select required className="form-control" value={form.employeeId} onChange={set('employeeId')} onBlur={checkConflict}>
-              <option value="">— Select Employee —</option>
-              {state.employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-            </select>
+            {isEmployee ? (
+              <select required className="form-control" value={form.employeeId} onChange={set('employeeId')} onBlur={checkConflict}>
+                <option value={user.id}>{user.name}</option>
+              </select>
+            ) : (
+              <select required className="form-control" value={form.employeeId} onChange={set('employeeId')} onBlur={checkConflict}>
+                <option value="">— Select Employee —</option>
+                {state.employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+              </select>
+            )}
             {balance !== null && <span className="text-xs text-muted mt-1">Leave balance: <strong>{balance}</strong> days remaining</span>}
           </div>
           <div className="form-grid">
@@ -82,12 +97,30 @@ export default function LeaveAttendance() {
   const [activeTab, setActiveTab] = useState('leave');
   const [showLeaveModal, setShowLeaveModal] = useState(false);
 
-  const pendingLeaves = state.leaves.filter(l => l.status === 'Pending');
-  const approvedLeaves = state.leaves.filter(l => l.status === 'Approved');
+  const userRole = state.auth.user.role;
+  const canManage = userRole === 'ADMIN' || userRole === 'HR';
+  const isEmployee = userRole === 'EMPLOYEE';
 
-  const updateLeaveStatus = (id, status) => dispatch({ type: 'UPDATE_LEAVE_STATUS', payload: { id, status } });
+  // Strict RBAC: If employee, only show their own leaves
+  const visibleLeaves = isEmployee 
+    ? state.leaves.filter(l => l.employeeId === state.auth.user.id)
+    : state.leaves;
+
+  const pendingLeaves = visibleLeaves.filter(l => l.status === 'Pending');
+  const approvedLeaves = visibleLeaves.filter(l => l.status === 'Approved');
+
+  const updateLeaveStatus = async (id, status) => {
+    try {
+      if (status === 'Approved') await approveLeave(id, state.auth.user.name);
+      if (status === 'Rejected') await rejectLeave(id, state.auth.user.name);
+      dispatch({ type: 'UPDATE_LEAVE_STATUS', payload: { id, status } });
+    } catch (err) {
+      alert("Failed to update leave status: " + err.message);
+    }
+  };
 
   const updateAttendance = (employeeId, field, value) => {
+    if (!canManage) return; // Strict RBAC
     const existing = state.attendance.find(a => a.employeeId === employeeId) || { employeeId, presentDays: 0, totalDays: 20 };
     dispatch({ type: 'UPDATE_ATTENDANCE', payload: { ...existing, [field]: Number(value) } });
   };
@@ -99,33 +132,37 @@ export default function LeaveAttendance() {
     <div className="page animate-in">
       <div className="page-header">
         <div className="page-header-left">
-          <h1>Attendance & Leave</h1>
-          <p>Track daily attendance and manage leave requests.</p>
+          <h1>{isEmployee ? 'My Leave & Attendance' : 'Attendance & Leave'}</h1>
+          <p>{isEmployee ? 'View your attendance and manage your leaves.' : 'Track daily attendance and manage leave requests.'}</p>
         </div>
         <button className="btn btn-primary" onClick={() => setShowLeaveModal(true)}>+ Apply Leave</button>
       </div>
 
       <div className="stats-grid">
         <div className="stat-card">
-          <span className="stat-card-label">Pending Requests</span>
+          <span className="stat-card-label">{isEmployee ? 'My Pending Requests' : 'Pending Requests'}</span>
           <span className="stat-card-value" style={{ color: 'var(--warning)' }}>{pendingLeaves.length}</span>
         </div>
         <div className="stat-card">
-          <span className="stat-card-label">Approved This Cycle</span>
+          <span className="stat-card-label">{isEmployee ? 'My Approved Leaves' : 'Approved This Cycle'}</span>
           <span className="stat-card-value" style={{ color: 'var(--success)' }}>{approvedLeaves.length}</span>
         </div>
-        <div className="stat-card">
-          <span className="stat-card-label">On Leave Today</span>
-          <span className="stat-card-value" style={{ color: 'var(--danger)' }}>
-            {state.employees.filter(e => isOnLeaveToday(e.id, state.leaves)).length}
-          </span>
-        </div>
-        <div className="stat-card">
-          <span className="stat-card-label">Team Avg Attendance</span>
-          <span className="stat-card-value" style={{ color: 'var(--primary)' }}>
-            {state.employees.length ? Math.round(state.employees.reduce((s, e) => s + calcAttendancePct(e.id, state.attendance), 0) / state.employees.length) : 0}%
-          </span>
-        </div>
+        {!isEmployee && (
+          <>
+            <div className="stat-card">
+              <span className="stat-card-label">On Leave Today</span>
+              <span className="stat-card-value" style={{ color: 'var(--danger)' }}>
+                {state.employees.filter(e => isOnLeaveToday(e.id, state.leaves)).length}
+              </span>
+            </div>
+            <div className="stat-card">
+              <span className="stat-card-label">Team Avg Attendance</span>
+              <span className="stat-card-value" style={{ color: 'var(--primary)' }}>
+                {state.employees.length ? Math.round(state.employees.reduce((s, e) => s + calcAttendancePct(e.id, state.attendance), 0) / state.employees.length) : 0}%
+              </span>
+            </div>
+          </>
+        )}
       </div>
 
       <div className="flex gap-sm mb-2">
@@ -140,12 +177,12 @@ export default function LeaveAttendance() {
         <div className="table-wrap">
           <table>
             <thead>
-              <tr><th>Employee</th><th>Type</th><th>From</th><th>To</th><th>Days</th><th>Status</th><th>Actions</th></tr>
+              <tr><th>Employee</th><th>Type</th><th>From</th><th>To</th><th>Days</th><th>Status</th>{canManage && <th>Actions</th>}</tr>
             </thead>
             <tbody>
-              {state.leaves.length === 0 ? (
-                <tr><td colSpan={7}><div className="table-empty">No leave records.</div></td></tr>
-              ) : state.leaves.map(leave => {
+              {visibleLeaves.length === 0 ? (
+                <tr><td colSpan={canManage ? 7 : 6}><div className="table-empty">No leave records.</div></td></tr>
+              ) : visibleLeaves.map(leave => {
                 const emp = state.employees.find(e => e.id === leave.employeeId);
                 const days = leave.startDate && leave.endDate
                   ? Math.ceil((new Date(leave.endDate) - new Date(leave.startDate)) / 86400000) + 1 : 0;
@@ -157,16 +194,18 @@ export default function LeaveAttendance() {
                     <td>{leave.endDate}</td>
                     <td>{days}d</td>
                     <td><span className={`badge ${leaveStatusColor[leave.status]}`}>{leave.status}</span></td>
-                    <td>
-                      {leave.status === 'Pending' ? (
-                        <div className="flex gap-sm">
-                          <button className="btn btn-success btn-sm" onClick={() => updateLeaveStatus(leave.id, 'Approved')}>Approve</button>
-                          <button className="btn btn-danger btn-sm" onClick={() => updateLeaveStatus(leave.id, 'Rejected')}>Reject</button>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-muted">—</span>
-                      )}
-                    </td>
+                    {canManage && (
+                      <td>
+                        {leave.status === 'Pending' ? (
+                          <div className="flex gap-sm">
+                            <button className="btn btn-success btn-sm" onClick={() => updateLeaveStatus(leave.id, 'Approved')}>Approve</button>
+                            <button className="btn btn-danger btn-sm" onClick={() => updateLeaveStatus(leave.id, 'Rejected')}>Reject</button>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted">—</span>
+                        )}
+                      </td>
+                    )}
                   </tr>
                 );
               })}
@@ -179,10 +218,12 @@ export default function LeaveAttendance() {
         <div className="table-wrap">
           <table>
             <thead>
-              <tr><th>Employee</th><th>Dept</th><th>Present Days</th><th>Total Days</th><th>Attendance %</th><th>Status</th><th>Edit</th></tr>
+              <tr><th>Employee</th><th>Dept</th><th>Present Days</th><th>Total Days</th><th>Attendance %</th><th>Status</th>{canManage && <th>Edit</th>}</tr>
             </thead>
             <tbody>
-              {state.employees.map(emp => {
+              {state.employees
+                .filter(emp => !isEmployee || emp.id === state.auth.user.id) // Filter for employees
+                .map(emp => {
                 const rec = state.attendance.find(a => a.employeeId === emp.id) || { employeeId: emp.id, presentDays: 0, totalDays: 20 };
                 const pct = rec.totalDays > 0 ? Math.round((rec.presentDays / rec.totalDays) * 100) : 0;
                 const onLeave = isOnLeaveToday(emp.id, state.leaves);
@@ -191,14 +232,22 @@ export default function LeaveAttendance() {
                     <td><div className="fw-6">{emp.name}</div><div className="text-xs text-muted">{emp.role}</div></td>
                     <td>{emp.department}</td>
                     <td>
-                      <input type="number" min="0" max={rec.totalDays} className="form-control" style={{ width: 70 }}
-                        defaultValue={rec.presentDays}
-                        onBlur={e => updateAttendance(emp.id, 'presentDays', e.target.value)} />
+                      {canManage ? (
+                        <input type="number" min="0" max={rec.totalDays} className="form-control" style={{ width: 70 }}
+                          defaultValue={rec.presentDays}
+                          onBlur={e => updateAttendance(emp.id, 'presentDays', e.target.value)} />
+                      ) : (
+                        <span className="fw-6">{rec.presentDays}</span>
+                      )}
                     </td>
                     <td>
-                      <input type="number" min="1" max="31" className="form-control" style={{ width: 70 }}
-                        defaultValue={rec.totalDays}
-                        onBlur={e => updateAttendance(emp.id, 'totalDays', e.target.value)} />
+                      {canManage ? (
+                        <input type="number" min="1" max="31" className="form-control" style={{ width: 70 }}
+                          defaultValue={rec.totalDays}
+                          onBlur={e => updateAttendance(emp.id, 'totalDays', e.target.value)} />
+                      ) : (
+                        <span className="fw-6">{rec.totalDays}</span>
+                      )}
                     </td>
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -215,7 +264,7 @@ export default function LeaveAttendance() {
                         : pct >= 80 ? <span className="badge badge-warning">Fair</span>
                         : <span className="badge badge-danger">Low</span>}
                     </td>
-                    <td><span className="text-xs text-muted">Blur to save</span></td>
+                    {canManage && <td><span className="text-xs text-muted">Blur to save</span></td>}
                   </tr>
                 );
               })}
