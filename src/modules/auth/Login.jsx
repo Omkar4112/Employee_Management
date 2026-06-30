@@ -48,7 +48,7 @@ export default function Login() {
           
           <div className="form-group">
             <label className="form-label">Email Address</label>
-            <input type="email" className="form-control" value={email} onChange={e => setEmail(e.target.value)} placeholder="admin@workforce.ai" />
+            <input type="email" className="form-control" value={email} onChange={e => setEmail(e.target.value)} placeholder="alice@company.com" />
           </div>
 
           <div className="form-group">
@@ -62,7 +62,13 @@ export default function Login() {
         </form>
 
         <div style={{ textAlign: 'center', marginTop: '1.5rem', fontSize: '0.75rem', color: 'var(--text-3)' }}>
-          <p>Login with an existing database email (e.g. alice@company.com). Any password works for now.</p>
+          <p style={{ marginBottom: '0.5rem' }}>Demo Credentials (click to fill):</p>
+          <div className="flex" style={{ gap: '0.5rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+            <span className="badge badge-primary cursor-pointer" onClick={() => { setEmail('alice@company.com'); setPassword('password'); }}>Admin: alice@</span>
+            <span className="badge badge-info cursor-pointer" onClick={() => { setEmail('bob@company.com'); setPassword('password'); }}>HR: bob@</span>
+            <span className="badge badge-neutral cursor-pointer" onClick={() => { setEmail('carol@company.com'); setPassword('password'); }}>Employee: carol@</span>
+          </div>
+          <p style={{ marginTop: '1rem', color: 'var(--text-muted)' }}>Any password will work. These are seeded into your MySQL DB.</p>
         </div>
       </div>
     </div>
